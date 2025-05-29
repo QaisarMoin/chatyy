@@ -56,6 +56,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { initializeYouTubeHandling } from '../services/youtubeHandler'
 
 interface ChatBoxProps {
   visible: boolean
@@ -104,199 +105,6 @@ const ChatBox: React.FC<ChatBoxProps> = ({
     return match ? match[1] : 'Unknown Problem'
   }
   
-  // ------------------------------------------------------------
-  // Provide the video data
-  setTimeout(() => {
-    (() => {
-      const scripts = Array.from(document.querySelectorAll('script'));
-      let playerResponse: any = null;
-    
-      for (const script of scripts) {
-        const text = script.textContent || '';
-        if (text.includes('ytInitialPlayerResponse')) {
-          const regex = /ytInitialPlayerResponse\s*=\s*({.+?});/s;
-          const match = text.match(regex);
-          if (match) {
-            try {
-              playerResponse = JSON.parse(match[1]);
-              break;
-            } catch (err) {
-              console.error('JSON parse error:', err);
-            }
-          }
-        }
-      }
-    
-      if (!playerResponse) {
-        console.log('ytInitialPlayerResponse not found');
-        return;
-      }
-    
-      const videoDetails = playerResponse.videoDetails || {};
-      const microformat = playerResponse.microformat?.playerMicroformatRenderer || {};
-    
-      const videoData = {
-        title: videoDetails.title || 'N/A',
-        channel: videoDetails.author || 'N/A',
-        views: videoDetails.viewCount ? `${videoDetails.viewCount} views` : 'N/A',
-        description: videoDetails.shortDescription || 'N/A',
-        publishDate: microformat.publishDate || 'N/A',
-        category: microformat.category || 'N/A',
-      };
-    
-      console.log('YouTube Video Data:----> ', videoData);
-    
-      return videoData; // if you want to use it further
-    })();
-    
-  }, 2500);
-  
-  // ------------------------------------------------------------
-  
-  // ------------------------------------------------------------
-  // Provide the video data
-  setTimeout(() => {
-   // contentScript.ts
-
-async function extractVideoData() {
-  const scripts = Array.from(document.querySelectorAll('script'));
-  let playerResponse: any = null;
-
-  for (const script of scripts) {
-    const text = script.textContent || '';
-    if (text.includes('ytInitialPlayerResponse')) {
-      const regex = /ytInitialPlayerResponse\s*=\s*({.+?});/s;
-      const match = text.match(regex);
-      if (match) {
-        try {
-          playerResponse = JSON.parse(match[1]);
-          break;
-        } catch (err) {
-          console.error('JSON parse error:', err);
-        }
-      }
-    }
-  }
-
-  if (!playerResponse) return null;
-
-  const videoDetails = playerResponse.videoDetails || {};
-  return {
-    title: videoDetails.title || '',
-    description: videoDetails.shortDescription || '',
-  };
-}
-
-async function getSummary(text: string) {
-  // Replace this URL with your actual summarization API endpoint
-  const response = await fetch('https://api.example.com/summarize', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text }),
-  });
-  const data = await response.json();
-  return data.summary;
-}
-
-(async () => {
-  const data = await extractVideoData();
-  if (!data) {
-    console.log('No video data found');
-    return;
-  }
-
-  console.log('Original Description:', data.description);
-
-  const summary = await getSummary(data.description || data.title);
-  console.log('Summary:', summary);
-})();
-
-    
-  }, 2500);
-  
-  // ------------------------------------------------------------
-
-
-  // ------------------------------------------------------------
-  // Provide the transcript of the video
-  setTimeout(() => {
-    async function getTranscript() {
-      try {
-        const scripts = Array.from(document.querySelectorAll('script'));
-        let playerResponse: any = null;
-    
-        for (const script of scripts) {
-          const text = script.textContent || '';
-          if (text.includes('ytInitialPlayerResponse')) {
-            const regex = /ytInitialPlayerResponse\s*=\s*({.+?});/s;
-            const match = text.match(regex);
-            if (match) {
-              playerResponse = JSON.parse(match[1]);
-              break;
-            }
-          }
-        }
-    
-        if (!playerResponse) return null;
-    
-        const captionsRenderer = playerResponse.captions?.playerCaptionsTracklistRenderer;
-        if (!captionsRenderer) return null;
-    
-        const captionTracks = captionsRenderer.captionTracks || [];
-        if (captionTracks.length === 0) return null;
-    
-        const transcriptUrl = captionTracks[0].baseUrl;
-        if (!transcriptUrl) return null;
-    
-        const res = await fetch(transcriptUrl);
-        const xmlText = await res.text();
-    
-        const parser = new DOMParser();
-        const xmlDoc = parser.parseFromString(xmlText, "text/xml");
-    
-        const texts = Array.from(xmlDoc.getElementsByTagName('text'));
-        const transcript = texts
-          .map(t => t.textContent?.replace(/\n/g, ' ') || '')
-          .join(' ');
-    
-        return transcript;
-      } catch (err) {
-        console.error('Error getting transcript:', err);
-        return null;
-      }
-    }
-    
-    async function getSummary(text: string) {
-      // Replace with your summarization API endpoint
-      const response = await fetch('https://api.example.com/summarize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
-      });
-      const data = await response.json();
-      return data.summary;
-    }
-    
-    (async () => {
-      const transcript = await getTranscript();
-    
-      if (!transcript) {
-        console.log('Transcript not found or unavailable');
-        return;
-      }
-    
-      console.log('Transcript:', transcript);
-    
-      const summary = await getSummary(transcript);
-      console.log('video summary:', summary);
-    })();
-    
-
-    
-  }, 2500);
-  
-  // ------------------------------------------------------------
-
   const problemName = getProblemName()
   const inputFieldRef = useRef<HTMLInputElement>(null)
 
@@ -751,6 +559,13 @@ const ContentPage: React.FC = () => {
 
     loadChromeStorage()
   }, [])
+
+  // Initialize YouTube handling
+  React.useEffect(() => {
+    setTimeout(() => {
+      initializeYouTubeHandling();
+    }, 2500);
+  }, []);
 
   return (
     <div
