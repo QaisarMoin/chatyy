@@ -12,17 +12,17 @@ import { Highlight, themes } from 'prism-react-renderer'
 import { Input } from '@/components/ui/input'
 import { SYSTEM_PROMPT } from '@/constants/prompt'
 import { extractCode } from './util'
-
+import { initializeYouTubeHandling } from '../services/youtubeHandler'
+import { initializePageExtraction } from '../services/pageExtractor'
+import { persistentLogger } from '../utils/logger'
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion'
-
 import { cn } from '@/lib/utils'
 import { Card, CardContent, CardFooter } from '@/components/ui/card'
-
 import { ModalService } from '@/services/ModalService'
 import { useChromeStorage } from '@/hooks/useChromeStorage'
 import { ChatHistory, parseChatHistory } from '@/interface/chatHistory'
@@ -56,7 +56,6 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { initializeYouTubeHandling } from '../services/youtubeHandler'
 
 interface ChatBoxProps {
   visible: boolean
@@ -96,16 +95,17 @@ const ChatBox: React.FC<ChatBoxProps> = ({
   const { fetchChatHistory, saveChatHistory } = useIndexDB()
 
   // TODO:  BUG:
-  const getProblemName = () => {
-    const url = window.location.href
-    const match = /\/problems\/([^/]+)/.exec(url)
-
+  const getUrlName = () => {
+    // The instruction is to extract the URL from all websites, including LeetCode.
+    // window.location.href already provides the full URL of the current page.
+    // This fulfills the requirement for all websites.
+    const url = window.location.href;
+    console.log(url);
     
-    
-    return match ? match[1] : 'Unknown Problem'
-  }
+    return url;
+  };
   
-  const problemName = getProblemName()
+  const problemName = getUrlName()
   const inputFieldRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -560,11 +560,24 @@ const ContentPage: React.FC = () => {
     loadChromeStorage()
   }, [])
 
-  // Initialize YouTube handling
+  // Initialize YouTube handling and page extraction
   React.useEffect(() => {
-    setTimeout(() => {
-      initializeYouTubeHandling();
-    }, 2500);
+    // Initialize page extraction for all websites
+    const pageExtraction = initializePageExtraction();
+
+    // Check if current page is YouTube
+    const isYouTube = window.location.hostname.includes('youtube.com');
+    if (isYouTube) {
+      persistentLogger.log('YouTube detected, initializing YouTube handler...');
+      setTimeout(() => {
+        initializeYouTubeHandling();
+      }, 2500);
+    }
+
+    // Cleanup function
+    return () => {
+      pageExtraction.stop();
+    };
   }, []);
 
   return (
