@@ -11,8 +11,9 @@ interface Product {
 interface PageContent {
   title: string;
   description: string;
-  mainContent: string;
-  visibleText: string;
+  mainContent: string; // Full text from body (cleaned)
+  visibleText: string; // Unique text from visible elements (attempted)
+  deDupedFullText: string; // De-duplicated text from the entire cleaned body
   url: string;
   metadata: {
     [key: string]: string;
@@ -179,10 +180,12 @@ export function extractProducts(): Product[] {
 }
 
 // Get text content from elements currently visible in the viewport
-export function getVisibleText(): string {
-  const visibleText: string[] = [];
+// Returns an array of text chunks from visible elements.
+// (Kept for potential alternative use, but not used in main de-duplication now)
+export function getVisibleTextChunks(): string[] {
+  const visibleTextChunks: string[] = [];
   try {
-    // Select common text-containing elements. Including div again but will clean their content.
+    // Select common text-containing elements.
     const textElements = document.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, span, div, a');
 
     const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
@@ -191,7 +194,6 @@ export function getVisibleText(): string {
     textElements.forEach(el => {
       const rect = el.getBoundingClientRect();
 
-      // Check if the element is at least partially within the viewport
       const isVisible = (
         rect.top < viewportHeight &&
         rect.bottom > 0 &&
@@ -200,41 +202,47 @@ export function getVisibleText(): string {
       );
 
       if (isVisible) {
-        // Clone the element to avoid modifying the live DOM
         const elClone = el.cloneNode(true) as HTMLElement;
-
-        // Remove script, style, and comment nodes from the clone and its children
         elClone.querySelectorAll('script, style').forEach(codeEl => codeEl.remove());
-        // Remove comment nodes - need to traverse for these as querySelectorAll doesn't find them
         const removeCommentNodes = (node: Node) => {
           for (let i = node.childNodes.length - 1; i >= 0; i--) {
             const child = node.childNodes[i];
-            if (child.nodeType === Node.COMMENT_NODE) {
-              child.remove();
-            } else if (child.nodeType === Node.ELEMENT_NODE) {
-              removeCommentNodes(child); // Recurse for element nodes
-            }
+            if (child.nodeType === Node.COMMENT_NODE) { child.remove(); } else if (child.nodeType === Node.ELEMENT_NODE) { removeCommentNodes(child); }
           }
         };
         removeCommentNodes(elClone);
 
-        // Extract text content from the cleaned clone
         const text = elClone.textContent?.trim();
-
-        // Basic check to avoid adding empty strings or potentially non-prose text that remains
-        if (text && text.length > 1) { // Require more than 1 character
-           visibleText.push(text);
-        }
+        if (text && text.length > 1) { visibleTextChunks.push(text); }
       }
     });
-
-    // Join with space, normalize whitespace, and trim
-    const combinedText = visibleText.join(' ').replace(/\s+/g, ' ').trim();
-    persistentLogger.log('Visible text extracted (enhanced cleaning), length:', combinedText.length);
-    return combinedText;
-
+    persistentLogger.log('Visible text chunks extracted, count:', visibleTextChunks.length);
+    return visibleTextChunks;
   } catch (error) {
-    persistentLogger.error('Error extracting visible text (enhanced cleaning):', error);
+    persistentLogger.error('Error extracting visible text chunks:', error);
+    return [];
+  }
+}
+
+// Get de-duplicated text from the entire cleaned body content
+export function getDeDupedFullText(): string {
+  try {
+    const fullText = getMainContent(); // Get the full cleaned text
+
+    // Split the text into lines or chunks (e.g., by newlines)
+    // Splitting by sentence could be better but is more complex.
+    const chunks = fullText.split(/\r?\n/).map(line => line.trim()).filter(line => line.length > 1);
+
+    // Use a Set to get unique chunks (lines)
+    const uniqueChunks = Array.from(new Set(chunks));
+
+    // Join the unique chunks back together
+    const deDupedText = uniqueChunks.join('\n').replace(/\s+/g, ' ').trim(); // Join with newline, then normalize spacing
+
+    persistentLogger.log('De-duplicated full text extracted, length:', deDupedText.length);
+    return deDupedText;
+  } catch (error) {
+    persistentLogger.error('Error extracting de-duplicated full text:', error);
     return '';
   }
 }
@@ -242,12 +250,13 @@ export function getVisibleText(): string {
 // Get all page content
 export function getAllPageContent(): PageContent {
   persistentLogger.log('Extracting all page content...');
-  
+
   const content: PageContent = {
     title: getPageTitle(),
     description: getPageDescription(),
-    mainContent: getMainContent(),
-    visibleText: getVisibleText(),
+    mainContent: getMainContent(), // Full text from body (cleaned)
+    visibleText: '', // Reset this or keep previous logic if needed separately
+    deDupedFullText: getDeDupedFullText(), // Populate with de-duplicated full text
     url: window.location.href,
     metadata: getMetadata(),
     products: extractProducts() // Include extracted products
@@ -256,8 +265,8 @@ export function getAllPageContent(): PageContent {
   // Log the full content object with prefix
   persistentLogger.log('mod Qaisar -> "All the content "', content);
 
-  // Log the visible text
-  persistentLogger.log('mod Qaisar -> "Visible Text"', content.visibleText);
+  // Log the de-duplicated full text
+  persistentLogger.log('mod Qaisar -> "De-duplicated Full Text"', content.deDupedFullText, "-----------------------------------------------------------------------------------------------------------------------");
 
   // Log extracted products
   if (content.products && content.products.length > 0) {
@@ -270,7 +279,7 @@ export function getAllPageContent(): PageContent {
     title: content.title,
     descriptionLength: content.description.length,
     mainContentLength: content.mainContent.length,
-    visibleTextLength: content.visibleText.length,
+    deDupedFullTextLength: content.deDupedFullText.length, // Log de-duplicated full text length
     metadataCount: Object.keys(content.metadata).length,
     productCount: content.products?.length || 0 // Log product count
   });
@@ -282,10 +291,11 @@ export function getAllPageContent(): PageContent {
 export function initializePageExtraction() {
   persistentLogger.log('Initializing page content extraction...');
 
-  // Set up observer for content changes
+  // Set up observer for content changes (still observes the whole body)
   const contentObserver = new MutationObserver(() => {
-    const content = getMainContent();
-    persistentLogger.log('Content updated, new length:', content.length);
+    // When content changes, re-extract and log the de-duplicated full text
+    const updatedContent = getAllPageContent(); // Re-run extraction
+    // The logs are already inside getAllPageContent, so no need to log here again
   });
 
   // Observe body for changes
@@ -296,16 +306,9 @@ export function initializePageExtraction() {
   });
   persistentLogger.log('Content change observer initialized');
 
-  // Initial content extraction
+  // Initial content extraction and logging
   const initialContent = getAllPageContent();
-  persistentLogger.log('Initial page content extracted:', {
-    title: initialContent.title,
-    url: initialContent.url,
-    descriptionLength: initialContent.description.length,
-    mainContentLength: initialContent.mainContent.length,
-    visibleTextLength: initialContent.visibleText.length,
-    metadataCount: Object.keys(initialContent.metadata).length
-  });
+  // Initial content log is now handled inside getAllPageContent
 
   return {
     stop: () => {
